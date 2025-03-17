@@ -202,9 +202,9 @@ export default function Portfolio() {
       
       // 各銘柄の売り時判定を確認
       if (results && results.length > 0) {
-        const sellSignals = results.filter(r => r.analysis && r.analysis.isSellSignal);
+        const sellSignals = results.filter((r: SellAnalysisResult) => r.analysis && r.analysis.isSellSignal);
         console.log(`売り時と判断された銘柄: ${sellSignals.length}件`);
-        console.log('売り時の銘柄:', sellSignals.map(r => r.item.symbol).join(', ') || 'なし');
+        console.log('売り時の銘柄:', sellSignals.map((r: SellAnalysisResult) => r.item.symbol).join(', ') || 'なし');
       }
       
       setSellAnalysisResults(results);
