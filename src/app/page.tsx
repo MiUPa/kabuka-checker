@@ -8,7 +8,11 @@ import Portfolio from '@/components/Portfolio';
 import { ChartData, StockData } from '@/lib/stock-api';
 
 export default function Home() {
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [selectedStock, setSelectedStock] = useState<{
+    symbol: string;
+    name: string;
+    data: ChartData[];
+  } | null>(null);
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [analysis, setAnalysis] = useState<{
@@ -21,10 +25,10 @@ export default function Home() {
   
   // 銘柄が選択されたときに株価データとチャートを取得
   useEffect(() => {
-    if (selectedSymbol) {
-      fetchStockData(selectedSymbol);
+    if (selectedStock) {
+      fetchStockData(selectedStock.symbol);
     }
-  }, [selectedSymbol]);
+  }, [selectedStock]);
   
   // 株価データとチャートを取得
   const fetchStockData = async (symbol: string) => {
@@ -60,112 +64,38 @@ export default function Home() {
   
   // 銘柄検索後の処理
   const handleSelectStock = (symbol: string) => {
-    setSelectedSymbol(symbol);
+    setSelectedStock({ symbol, name: '', data: [] });
     setActiveTab('search');
   };
   
   return (
-    <main className="min-h-screen bg-gray-100 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">株価チェッカー</h1>
-          <p className="mt-2 text-lg text-gray-600">
-            株価チャートを分析して、買い時・売り時を判断するツール
-          </p>
-        </div>
-        
-        {/* タブ切り替え */}
-        <div className="flex border-b border-gray-200 mb-6">
-          <button
-            className={`py-2 px-4 border-b-2 font-medium text-sm ${
-              activeTab === 'search'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-            onClick={() => setActiveTab('search')}
-          >
-            銘柄検索・分析
-          </button>
-          <button
-            className={`ml-8 py-2 px-4 border-b-2 font-medium text-sm ${
-              activeTab === 'portfolio'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-            onClick={() => setActiveTab('portfolio')}
-          >
-            ポートフォリオ管理
-          </button>
-        </div>
-        
-        {activeTab === 'search' ? (
-          <div>
-            <StockSearch onSelectStock={handleSelectStock} />
-            
-            {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mt-6">
-                <p>{error}</p>
+    <main className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-8">株価分析ツール</h1>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          {selectedStock ? (
+            <StockChart
+              data={selectedStock.data}
+              title={selectedStock.name}
+              symbol={selectedStock.symbol}
+            />
+          ) : (
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-xl font-semibold mb-4">株価チャート</h2>
+              <div className="h-[400px] flex items-center justify-center">
+                <p className="text-gray-500">銘柄を選択してください</p>
               </div>
-            )}
-            
-            {isLoading ? (
-              <div className="text-center py-10">
-                <p className="text-gray-500">データを読み込み中...</p>
-              </div>
-            ) : (
-              <>
-                {stockData && chartData.length > 0 && (
-                  <div className="mt-6">
-                    <StockChart 
-                      data={chartData} 
-                      title={stockData.name} 
-                      symbol={stockData.symbol} 
-                    />
-                    
-                    <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
-                      <h2 className="text-xl font-semibold mb-4">銘柄情報</h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div>
-                          <p className="text-gray-500 text-sm">銘柄コード</p>
-                          <p className="font-medium">{stockData.symbol}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-sm">銘柄名</p>
-                          <p className="font-medium">{stockData.name}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-sm">現在値</p>
-                          <p className="font-medium">{stockData.price.toLocaleString()} 円</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-sm">前日比</p>
-                          <p className={`font-medium ${stockData.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {stockData.change >= 0 ? '+' : ''}{stockData.change.toLocaleString()} 円 ({stockData.changePercent.toFixed(2)}%)
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-sm">出来高</p>
-                          <p className="font-medium">{stockData.volume.toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-sm">時価総額</p>
-                          <p className="font-medium">{(stockData.marketCap / 1000000).toFixed(0).toLocaleString()} 百万円</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <StockAnalysis
-                      stockData={stockData}
-                      analysis={analysis}
-                    />
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        ) : (
-          <Portfolio />
-        )}
+            </div>
+          )}
+        </div>
+        <div>
+          <Portfolio onSelectStock={setSelectedStock} />
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <StockAnalysis />
       </div>
     </main>
   );

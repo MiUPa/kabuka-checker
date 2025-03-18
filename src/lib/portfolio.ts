@@ -2,6 +2,7 @@ import { StockData, getStockQuote, getStockHistory, analyzeStockToSell } from '.
 
 export type PortfolioItem = {
   symbol: string;        // 銘柄コード
+  name: string;          // 銘柄名
   shares: number;        // 保有株数
   averagePrice: number;  // 平均取得価格
   purchaseDate: string;  // 購入日
@@ -47,6 +48,7 @@ export function savePortfolio(portfolio: Portfolio): void {
 export function addToPortfolio(
   portfolio: Portfolio,
   symbol: string,
+  name: string,
   shares: number,
   averagePrice: number,
   purchaseDate: string,
@@ -78,7 +80,7 @@ export function addToPortfolio(
     return {
       items: [
         ...portfolio.items,
-        { symbol, shares, averagePrice, purchaseDate, notes }
+        { symbol, name, shares, averagePrice, purchaseDate, notes }
       ]
     };
   }

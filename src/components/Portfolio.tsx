@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Portfolio as PortfolioType, PortfolioItem, loadPortfolio, savePortfolio, addToPortfolio, removeFromPortfolio } from '@/lib/portfolio';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
-import { StockData } from '@/lib/stock-api';
+import { StockData, ChartData } from '@/lib/stock-api';
 
 // 売り時分析結果の型定義
 type SellAnalysisResult = {
@@ -16,7 +16,11 @@ type SellAnalysisResult = {
   };
 };
 
-export default function Portfolio() {
+interface PortfolioProps {
+  onSelectStock: (stock: { symbol: string; name: string; data: ChartData[] }) => void;
+}
+
+export default function Portfolio({ onSelectStock }: PortfolioProps) {
   const [portfolio, setPortfolio] = useState<PortfolioType>({ items: [] });
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newItem, setNewItem] = useState({
@@ -132,6 +136,7 @@ export default function Portfolio() {
       const updatedPortfolio = addToPortfolio(
         portfolio,
         newItem.symbol,
+        stockData.name,
         Number(newItem.shares),
         Number(newItem.averagePrice),
         newItem.purchaseDate,
@@ -287,10 +292,25 @@ export default function Portfolio() {
     );
   };
   
+  // 銘柄を選択
+  const handleSelectStock = async (symbol: string, name: string) => {
+    try {
+      const response = await fetch(`/api/stock?symbol=${symbol}&action=history`);
+      if (!response.ok) {
+        throw new Error('株価データの取得に失敗しました');
+      }
+      
+      const data = await response.json();
+      onSelectStock({ symbol, name, data });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '銘柄の選択中にエラーが発生しました');
+    }
+  };
+  
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold">ポートフォリオ管理</h2>
+        <h2 className="text-xl font-semibold">ポートフォリオ</h2>
         <button
           onClick={() => setIsAddModalOpen(true)}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -307,11 +327,85 @@ export default function Portfolio() {
       
       {loading ? (
         <div className="text-center py-10">
-          <p className="text-gray-500">読み込み中...</p>
+          <p className="text-gray-500">データを読み込み中...</p>
         </div>
-      ) : portfolio.items.length === 0 ? (
+      ) : portfolioValue ? (
+        <div className="space-y-4">
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <p className="text-gray-600">総資産額</p>
+            <p className="text-2xl font-bold">{portfolioValue.totalValue.toLocaleString()} 円</p>
+          </div>
+
+          <div className="space-y-4">
+            {portfolioValue.items.map(({ item, currentPrice, value, profit, profitPercent }) => (
+              <div
+                key={item.symbol}
+                className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                onClick={() => handleSelectStock(item.symbol, item.name)}
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <div>
+                    <span className="font-semibold">{item.symbol}</span>
+                    <span className="ml-2 text-gray-600">{item.name}</span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveStock(item.symbol);
+                    }}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    削除
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <p className="text-gray-500">保有数</p>
+                    <p className="font-medium">{item.shares.toLocaleString()} 株</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">平均取得価格</p>
+                    <p className="font-medium">{item.averagePrice.toLocaleString()} 円</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">現在値</p>
+                    <p className="font-medium">{currentPrice.toLocaleString()} 円</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">評価額</p>
+                    <p className="font-medium">{value.toLocaleString()} 円</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">損益</p>
+                    <p className={`font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {profit >= 0 ? '+' : ''}{profit.toLocaleString()} 円
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">損益率</p>
+                    <p className={`font-medium ${profitPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {profitPercent >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={analyzeSellSignals}
+            className="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 mt-4"
+            disabled={loading}
+          >
+            {loading ? '分析中...' : '売り時を分析する'}
+          </button>
+
+          {renderSellAnalysisResults()}
+        </div>
+      ) : (
         <div className="text-center py-10 border border-dashed border-gray-300 rounded-lg">
-          <p className="text-gray-500 mb-4">保有している銘柄がありません</p>
+          <p className="text-gray-500 mb-4">ポートフォリオに銘柄がありません</p>
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -319,229 +413,133 @@ export default function Portfolio() {
             銘柄を追加する
           </button>
         </div>
-      ) : (
-        <>
-          {/* ポートフォリオ概要 */}
-          {portfolioValue && (
-            <div className="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100">
-              <h3 className="text-lg font-medium text-blue-800 mb-2">ポートフォリオ概要</h3>
-              <p className="text-2xl font-bold text-blue-900">
-                総資産: {portfolioValue.totalValue.toLocaleString()} 円
-              </p>
-              <p className="text-sm text-blue-700 mt-1">
-                保有銘柄数: {portfolio.items.length}
-              </p>
-            </div>
-          )}
-          
-          {/* 銘柄リスト */}
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">銘柄</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">保有数</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">平均取得価格</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">現在価格</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">評価額</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">損益</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">損益率</th>
-                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">アクション</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {portfolioValue?.items.map(({ item, currentPrice, value, profit, profitPercent }) => (
-                  <tr key={item.symbol} className="hover:bg-gray-50">
-                    <td className="px-4 py-4 whitespace-nowrap">
-                      <div className="font-medium text-gray-900">{item.symbol}</div>
-                      <div className="text-sm text-gray-500">{item.purchaseDate}</div>
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right">
-                      {item.shares.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right">
-                      {item.averagePrice.toLocaleString()} 円
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right">
-                      {currentPrice.toLocaleString()} 円
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right font-medium">
-                      {value.toLocaleString()} 円
-                    </td>
-                    <td className={`px-4 py-4 whitespace-nowrap text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {profit.toLocaleString()} 円
-                    </td>
-                    <td className={`px-4 py-4 whitespace-nowrap text-right font-medium ${profitPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {profitPercent.toFixed(2)}%
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-center">
-                      <button
-                        onClick={() => handleRemoveStock(item.symbol)}
-                        className="text-red-600 hover:text-red-900 font-medium text-sm"
-                      >
-                        削除
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* 売り時分析結果 */}
-          {renderSellAnalysisResults()}
-          
-          <div className="mt-6 text-center">
-            <button
-              onClick={analyzeSellSignals}
-              className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              disabled={loading || portfolio.items.length === 0}
-            >
-              売り時を分析する
-            </button>
-          </div>
-        </>
       )}
       
       {/* 銘柄追加モーダル */}
       <Transition appear show={isAddModalOpen} as={Fragment}>
         <Dialog
           as="div"
-          className="fixed inset-0 z-10 overflow-y-auto"
+          className="relative z-10"
           onClose={() => setIsAddModalOpen(false)}
         >
-          <div className="min-h-screen px-4 text-center">
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-300"
-              enterFrom="opacity-0"
-              enterTo="opacity-100"
-              leave="ease-in duration-200"
-              leaveFrom="opacity-100"
-              leaveTo="opacity-0"
-            >
-              <Dialog.Overlay className="fixed inset-0 bg-black bg-opacity-30" />
-            </Transition.Child>
-            
-            <span
-              className="inline-block h-screen align-middle"
-              aria-hidden="true"
-            >
-              &#8203;
-            </span>
-            
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-300"
-              enterFrom="opacity-0 scale-95"
-              enterTo="opacity-100 scale-100"
-              leave="ease-in duration-200"
-              leaveFrom="opacity-100 scale-100"
-              leaveTo="opacity-0 scale-95"
-            >
-              <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
-                <Dialog.Title
-                  as="h3"
-                  className="text-lg font-medium leading-6 text-gray-900 mb-4"
-                >
-                  銘柄を追加
-                </Dialog.Title>
-                
-                <form onSubmit={handleAddStock}>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      銘柄コード *
-                    </label>
-                    <input
-                      type="text"
-                      value={newItem.symbol}
-                      onChange={(e) => setNewItem({ ...newItem, symbol: e.target.value.toUpperCase() })}
-                      placeholder="例: 7974.T, AAPL"
-                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      日本株は「銘柄コード.T」、米国株はティッカーシンボル
-                    </p>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      保有株数 *
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={newItem.shares}
-                      onChange={(e) => setNewItem({ ...newItem, shares: e.target.value })}
-                      placeholder="例: 100"
-                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      平均取得価格 *
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={newItem.averagePrice}
-                      onChange={(e) => setNewItem({ ...newItem, averagePrice: e.target.value })}
-                      placeholder="例: 5000"
-                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      購入日 *
-                    </label>
-                    <input
-                      type="date"
-                      value={newItem.purchaseDate}
-                      onChange={(e) => setNewItem({ ...newItem, purchaseDate: e.target.value })}
-                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      メモ
-                    </label>
-                    <textarea
-                      value={newItem.notes}
-                      onChange={(e) => setNewItem({ ...newItem, notes: e.target.value })}
-                      placeholder="任意のメモを入力できます"
-                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows={2}
-                    />
-                  </div>
-                  
-                  <div className="flex justify-end space-x-3">
-                    <button
-                      type="button"
-                      className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                      onClick={() => setIsAddModalOpen(false)}
-                    >
-                      キャンセル
-                    </button>
-                    <button
-                      type="submit"
-                      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      disabled={loading}
-                    >
-                      {loading ? '処理中...' : '追加する'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </Transition.Child>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black bg-opacity-25" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-gray-900 mb-4"
+                  >
+                    銘柄を追加
+                  </Dialog.Title>
+
+                  <form onSubmit={handleAddStock}>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          銘柄コード
+                        </label>
+                        <input
+                          type="text"
+                          value={newItem.symbol}
+                          onChange={(e) => setNewItem({ ...newItem, symbol: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                          placeholder="例: 7203.T"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          保有数
+                        </label>
+                        <input
+                          type="number"
+                          value={newItem.shares}
+                          onChange={(e) => setNewItem({ ...newItem, shares: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                          placeholder="例: 100"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          平均取得価格
+                        </label>
+                        <input
+                          type="number"
+                          value={newItem.averagePrice}
+                          onChange={(e) => setNewItem({ ...newItem, averagePrice: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                          placeholder="例: 2000"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          取得日
+                        </label>
+                        <input
+                          type="date"
+                          value={newItem.purchaseDate}
+                          onChange={(e) => setNewItem({ ...newItem, purchaseDate: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          メモ
+                        </label>
+                        <textarea
+                          value={newItem.notes}
+                          onChange={(e) => setNewItem({ ...newItem, notes: e.target.value })}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                          rows={3}
+                          placeholder="メモを入力（任意）"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex justify-end space-x-3">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddModalOpen(false)}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        disabled={loading}
+                      >
+                        {loading ? '追加中...' : '追加'}
+                      </button>
+                    </div>
+                  </form>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
           </div>
         </Dialog>
       </Transition>
